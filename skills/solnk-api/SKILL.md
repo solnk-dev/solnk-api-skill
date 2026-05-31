@@ -1,9 +1,9 @@
 ---
 name: solnk-api
-description: Publish content to 9 social platforms (X, Instagram, TikTok, YouTube, Facebook, LinkedIn, Pinterest, Threads, Bluesky) via the Solnk API. Use when the user wants to publish, schedule, or manage social media posts programmatically.
+description: Publish content to 9 social platforms (X, Instagram, TikTok, YouTube, Facebook, LinkedIn, Pinterest, Threads, Bluesky) via the Solnk API. Use when the user wants to publish, schedule, draft, or cross-post social media content; upload media; check connected accounts or plan usage; or pull post analytics (views, likes, comments, shares) — programmatically.
 metadata:
   author: solnk
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Solnk API
@@ -27,15 +27,19 @@ API keys: https://solnk.com/settings/api-keys
 | List connected accounts | GET | /accounts | accounts:read |
 | Get single account | GET | /accounts/{id} | accounts:read |
 | Publish to platforms | POST | /publishes | posts:write |
+| Confirm a draft publish | POST | /publishes/{id}/confirm | posts:write |
 | Get publish status | GET | /publishes/{id} | posts:read |
 | List publishes | GET | /publishes | posts:read |
+| Cancel a draft/scheduled publish | DELETE | /publishes/{id} | posts:write |
+| List post analytics | GET | /analytics/posts | analytics:read |
+| Get post analytics (per-platform) | GET | /analytics/posts/{id} | analytics:read |
 | Check usage & limits | GET | /usage | billing:read |
 | Create media upload | POST | /media/uploads | media:write |
 | Confirm media upload | POST | /media/uploads/{id}/confirm | media:write |
 | List media | GET | /media | media:read |
-| List webhooks | GET | /webhooks | webhooks:manage |
-| Create webhook | POST | /webhooks | webhooks:manage |
-| Delete webhook | DELETE | /webhooks/{id} | webhooks:manage |
+| List webhooks | GET | /webhooks | webhooks:read |
+| Create webhook | POST | /webhooks | webhooks:write |
+| Delete webhook | DELETE | /webhooks/{id} | webhooks:write |
 
 ## How to publish (step by step)
 
@@ -65,9 +69,42 @@ curl -X POST https://api.solnk.com/api/v1/publishes \
   }'
 ```
 
-Each target can override `content` and `media_ids` for platform-specific text or media.
+Each target can override `content`, `media_ids`, and `platform_settings` for platform-specific text, media, or options (see "Platform-specific settings" below).
 
-For scheduled posts, use `"publish_mode": "scheduled"` with `"scheduled_at": "2026-04-01T10:00:00Z"` (ISO 8601 UTC).
+`publish_mode` is one of:
+- `"immediate"` — publish right away
+- `"scheduled"` — publish later; also send `"scheduled_at": "2026-04-01T10:00:00Z"` (ISO 8601 UTC)
+- `"draft"` — create but don't send; review it, then confirm (next step)
+
+### 2b. Draft → review → confirm (optional, recommended for agents)
+
+Create the post as a draft so a human can review the per-platform preview before anything goes live:
+
+```bash
+# Create a draft (nothing is published yet)
+curl -X POST https://api.solnk.com/api/v1/publishes \
+  -H "Authorization: Bearer sk_live_your_key" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: unique-key-123" \
+  -d '{ "content": "Draft me", "publish_mode": "draft",
+        "targets": [{ "account_id": "YOUR_X_ACCOUNT_ID" }] }'
+
+# Confirm to publish now...
+curl -X POST https://api.solnk.com/api/v1/publishes/PUBLISH_ID/confirm \
+  -H "Authorization: Bearer sk_live_your_key" -H "Content-Type: application/json" -d '{}'
+
+# ...or confirm with a schedule
+curl -X POST https://api.solnk.com/api/v1/publishes/PUBLISH_ID/confirm \
+  -H "Authorization: Bearer sk_live_your_key" -H "Content-Type: application/json" \
+  -d '{ "scheduled_at": "2026-04-01T10:00:00Z" }'
+```
+
+Cancel a draft or not-yet-sent scheduled post (cannot cancel one already processing/published):
+
+```bash
+curl -X DELETE https://api.solnk.com/api/v1/publishes/PUBLISH_ID \
+  -H "Authorization: Bearer sk_live_your_key"
+```
 
 ### 3. Check result
 
@@ -76,7 +113,9 @@ curl https://api.solnk.com/api/v1/publishes/PUBLISH_ID \
   -H "Authorization: Bearer sk_live_your_key"
 ```
 
-Status: `queued` → `processing` → `success` / `partial_success` / `failed` / `cancelled`
+Status: `draft` → `queued` → `processing` → `success` / `partial_success` / `failed` / `cancelled`
+
+The publish object returns the **aggregate** status only. To get each platform's live post URL and engagement, use the Analytics endpoints below.
 
 ## How to upload media
 
@@ -119,7 +158,7 @@ curl -X POST https://api.solnk.com/api/v1/webhooks \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://your-server.com/webhook",
-    "events": ["publish.request.completed", "publish.target.failed"]
+    "events": ["post.published", "post.failed"]
   }'
 
 # List existing webhooks
@@ -131,9 +170,9 @@ curl -X DELETE https://api.solnk.com/api/v1/webhooks/{webhook_id} \
   -H "Authorization: Bearer sk_live_your_key"
 ```
 
-Events: `publish.request.completed`, `publish.request.failed`, `publish.target.published`, `publish.target.failed`, `account.authorization.expired`
+Events: `post.published`, `post.failed`, `post.pending_approval`, `post.approved`, `post.rejected`
 
-Webhooks use HMAC-SHA256 signatures. Retry policy: exponential backoff, max 6 retries over 12 hours.
+Webhooks are scoped to the API key's team (team-scoped keys subscribe under their team; user-scoped keys use the caller's active team). HMAC-SHA256 signatures via `X-Solnk-Signature: sha256=<hex>` header. Retry policy: 10s timeout, exponential backoff 1m / 5m / 30m / 2h / 12h (max 6 attempts total).
 
 ## How to browse publish history
 
@@ -146,6 +185,45 @@ curl "https://api.solnk.com/api/v1/publishes?page=1&page_size=20" \
 curl "https://api.solnk.com/api/v1/publishes?status=failed&platform=x&created_after=2026-04-01T00:00:00Z" \
   -H "Authorization: Bearer sk_live_your_key"
 ```
+
+## How to read post analytics
+
+Get views, likes, comments, shares, and the live post URLs for published posts. Requires `analytics:read` scope.
+
+```bash
+# List posts with rolled-up metrics across platforms
+curl "https://api.solnk.com/api/v1/analytics/posts?page=1&page_size=20" \
+  -H "Authorization: Bearer sk_live_your_key"
+
+# Single post: per-platform breakdown, including each platform_post_url
+curl https://api.solnk.com/api/v1/analytics/posts/POST_ID \
+  -H "Authorization: Bearer sk_live_your_key"
+```
+
+List query params: `page`, `page_size`, `platform`, `sort`, `order`.
+
+Each post returns `metrics` (`total_views`, `total_likes`, `total_comments`, `total_shares`, `last_sync_at`). The single-post response adds a `platforms[]` array, each with `platform`, `platform_post_url` (the live link), per-platform `metrics`, and `platform_specific_data` (e.g. impressions, reach, saves). Metrics sync periodically — `last_sync_at` may be `null` right after publishing.
+
+## Platform-specific settings
+
+Set per target via `platform_settings`. It's a **flat object** — the keys below go directly inside it (do **not** nest under a platform name). Each target already knows its platform from the account. Only the keys listed here are used; anything else is ignored.
+
+```jsonc
+"targets": [
+  { "account_id": "YOUR_YT_ID",  "platform_settings": { "title": "Launch demo", "privacyStatus": "unlisted", "tags": ["solnk"], "madeForKids": false } },
+  { "account_id": "YOUR_PIN_ID", "platform_settings": { "boardId": "987654321", "title": "Solnk launch", "link": "https://solnk.com" } }
+]
+```
+
+- **x** — `reply_to`, `quote_tweet`, `sensitive` (bool), `for_super_followers_only` (bool)
+- **linkedin** — `title`, `visibility` (`PUBLIC` | `CONNECTIONS` | `LOGGED_IN_MEMBERS`), `target_audience` (object)
+- **facebook** — `postType` (`post` | `reels`)
+- **instagram** — `first_comment` (auto-posted as the first comment)
+- **threads** — `link_attachment` (url), `topic_tag`
+- **bluesky** — `first_comment`, `reply` (`{root,parent}`), `embed` (`{external:{uri,title,description}}`)
+- **pinterest** — `boardId`, `title`, `link`, `note`, `alt_text`, `cover_image_key_frame_time` (number). Multi-account: `per_account: { "<account_id>": { "boardId": "..." } }`
+- **youtube** — `title` (required for video), `privacyStatus` (`private` | `public` | `unlisted`), `category_id`, `default_language`, `default_audio_language`, `tags` (array), `madeForKids` (bool)
+- **tiktok** — `tiktok_post_mode` (`DIRECT_POST` | `MEDIA_UPLOAD`), `title` (photo posts, ≤90 chars), `privacy_level` (`PUBLIC_TO_EVERYONE` | `MUTUAL_FOLLOW_FRIENDS` | `FOLLOWER_OF_CREATOR` | `SELF_ONLY`), `allows_comments`, `allows_duet`, `allows_stitch`, `brand_content_toggle`, `brand_organic_toggle`, `auto_add_music` (all bool)
 
 ## Key rules
 
@@ -180,4 +258,4 @@ Or browse the interactive docs: https://developers.solnk.com
 }
 ```
 
-Error types: `invalid_request` (400), `authentication_error` (401), `authorization_error` (403), `not_found` (404), `rate_limited` (429), `quota_exceeded` (429), `platform_error` (502), `internal_error` (500)
+Error types: `invalid_request` (400), `authentication_error` (401), `authorization_error` (403), `not_found` (404), `conflict` (409, e.g. reused idempotency key with a different body), `rate_limited` (429), `quota_exceeded` (429), `platform_error` (502), `internal_error` (500)

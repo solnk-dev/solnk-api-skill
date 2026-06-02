@@ -3,7 +3,7 @@ name: solnk-api
 description: Publish content to 9 social platforms (X, Instagram, TikTok, YouTube, Facebook, LinkedIn, Pinterest, Threads, Bluesky) via the Solnk API. Use when the user wants to publish, schedule, draft, or cross-post social media content; upload media; check connected accounts or plan usage; or pull post analytics (views, likes, comments, shares) — programmatically.
 metadata:
   author: solnk
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Solnk API
@@ -14,7 +14,7 @@ Solnk API lets you publish content to 9 social platforms with a single API call.
 
 ```
 Base URL: https://api.solnk.com/api/v1
-Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx
+Authorization: Bearer sk_xxxxxxxxxxxxxxxx
 Content-Type: application/json
 ```
 
@@ -47,7 +47,7 @@ API keys: https://solnk.com/settings/api-keys
 
 ```bash
 curl https://api.solnk.com/api/v1/accounts?status=active \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 Note the `id` of each account you want to publish to.
@@ -56,7 +56,7 @@ Note the `id` of each account you want to publish to.
 
 ```bash
 curl -X POST https://api.solnk.com/api/v1/publishes \
-  -H "Authorization: Bearer sk_live_your_key" \
+  -H "Authorization: Bearer sk_your_key" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: unique-key-123" \
   -d '{
@@ -83,7 +83,7 @@ Create the post as a draft so a human can review the per-platform preview before
 ```bash
 # Create a draft (nothing is published yet)
 curl -X POST https://api.solnk.com/api/v1/publishes \
-  -H "Authorization: Bearer sk_live_your_key" \
+  -H "Authorization: Bearer sk_your_key" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: unique-key-123" \
   -d '{ "content": "Draft me", "publish_mode": "draft",
@@ -91,11 +91,11 @@ curl -X POST https://api.solnk.com/api/v1/publishes \
 
 # Confirm to publish now...
 curl -X POST https://api.solnk.com/api/v1/publishes/PUBLISH_ID/confirm \
-  -H "Authorization: Bearer sk_live_your_key" -H "Content-Type: application/json" -d '{}'
+  -H "Authorization: Bearer sk_your_key" -H "Content-Type: application/json" -d '{}'
 
 # ...or confirm with a schedule
 curl -X POST https://api.solnk.com/api/v1/publishes/PUBLISH_ID/confirm \
-  -H "Authorization: Bearer sk_live_your_key" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_your_key" -H "Content-Type: application/json" \
   -d '{ "scheduled_at": "2026-04-01T10:00:00Z" }'
 ```
 
@@ -103,14 +103,14 @@ Cancel a draft or not-yet-sent scheduled post (cannot cancel one already process
 
 ```bash
 curl -X DELETE https://api.solnk.com/api/v1/publishes/PUBLISH_ID \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 ### 3. Check result
 
 ```bash
 curl https://api.solnk.com/api/v1/publishes/PUBLISH_ID \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 Status: `draft` → `queued` → `processing` → `success` / `partial_success` / `failed` / `cancelled`
@@ -122,7 +122,7 @@ The publish object returns the **aggregate** status only. To get each platform's
 ```bash
 # Step 1: Get presigned upload URL
 curl -X POST https://api.solnk.com/api/v1/media/uploads \
-  -H "Authorization: Bearer sk_live_your_key" \
+  -H "Authorization: Bearer sk_your_key" \
   -H "Content-Type: application/json" \
   -d '{"filename": "photo.jpg", "content_type": "image/jpeg", "size_bytes": 204800}'
 
@@ -131,7 +131,7 @@ curl -X PUT "{upload_url}" -H "Content-Type: {headers.Content-Type}" --data-bina
 
 # Step 3: Confirm upload
 curl -X POST https://api.solnk.com/api/v1/media/uploads/{media_id}/confirm \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 Then use the `media_id` in your publish request's `media_ids` array.
@@ -142,7 +142,7 @@ Supported types: `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `video/mp
 
 ```bash
 curl https://api.solnk.com/api/v1/usage \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 Returns `can_publish` (boolean), plan limits (`posts_per_month`, `social_accounts`, `media_storage_gb`), and current usage. A `null` limit means unlimited. Requires `billing:read` scope.
@@ -154,7 +154,7 @@ Get notified instead of polling for publish results.
 ```bash
 # Subscribe to events
 curl -X POST https://api.solnk.com/api/v1/webhooks \
-  -H "Authorization: Bearer sk_live_your_key" \
+  -H "Authorization: Bearer sk_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://your-server.com/webhook",
@@ -163,11 +163,11 @@ curl -X POST https://api.solnk.com/api/v1/webhooks \
 
 # List existing webhooks
 curl https://api.solnk.com/api/v1/webhooks \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 
 # Delete a webhook
 curl -X DELETE https://api.solnk.com/api/v1/webhooks/{webhook_id} \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 Events: `post.published`, `post.failed`, `post.pending_approval`, `post.approved`, `post.rejected`
@@ -179,11 +179,11 @@ Webhooks are scoped to the API key's team (team-scoped keys subscribe under thei
 ```bash
 # List all publishes (paginated)
 curl "https://api.solnk.com/api/v1/publishes?page=1&page_size=20" \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 
 # Filter by status, platform, account, or date
 curl "https://api.solnk.com/api/v1/publishes?status=failed&platform=x&created_after=2026-04-01T00:00:00Z" \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 ## How to read post analytics
@@ -193,11 +193,11 @@ Get views, likes, comments, shares, and the live post URLs for published posts. 
 ```bash
 # List posts with rolled-up metrics across platforms
 curl "https://api.solnk.com/api/v1/analytics/posts?page=1&page_size=20" \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 
 # Single post: per-platform breakdown, including each platform_post_url
 curl https://api.solnk.com/api/v1/analytics/posts/POST_ID \
-  -H "Authorization: Bearer sk_live_your_key"
+  -H "Authorization: Bearer sk_your_key"
 ```
 
 List query params: `page`, `page_size`, `platform`, `sort`, `order`.
